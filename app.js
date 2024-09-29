@@ -1,22 +1,43 @@
-// Wait for the page to load
-window.onload = function() {
-    // Get the canvas element
-    const canvas = document.getElementById('glCanvas');
-    // Initialize the GL context
-    const gl = canvas.getContext('webgl');
+let gl, shaderProgram, currentColor;
 
-    // Only continue if WebGL is available and working
+window.onload = function() {
+    const canvas = document.getElementById('glCanvas');
+    resizeCanvas(canvas);
+
+    gl = canvas.getContext('webgl');
     if (!gl) {
         alert('Unable to initialize WebGL. Your browser may not support it.');
         return;
     }
 
-    // Set clear color to black, fully opaque
-    gl.clearColor(0.0, 0.0, 0.0, 1.0);
-    // Clear the color buffer with specified clear color
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    // Set default color to white
+    currentColor = [1.0, 1.0, 1.0, 1.0];  // Default is white
 
-    // Vertex shader program
+    // Initialize shaders and buffers
+    initShaders();
+    initBuffers();
+    drawScene();
+
+    // Listen for window resize
+    window.addEventListener('resize', () => resizeCanvas(canvas));
+
+    // Attach button event listeners for color changes
+    document.getElementById('Maroon').addEventListener('click', () => setColor(0.5, 0.0, 0.0));   // Maroon
+    document.getElementById('Tosca').addEventListener('click', () => setColor(0.29, 0.69, 0.61)); // Tosca
+    document.getElementById('Pastel').addEventListener('click', () => setColor(1.0, 0.87, 0.82));   // Pastel
+    document.getElementById('reset').addEventListener('click', resetColor);  // Reset to white
+};
+
+// Resize canvas
+function resizeCanvas(canvas) {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    if (gl) {
+        gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+}
+
+function initShaders() {
     const vsSource = `
         attribute vec4 aVertexPosition;
         void main() {
@@ -24,78 +45,81 @@ window.onload = function() {
         }
     `;
 
-    // Fragment shader program
     const fsSource = `
+        precision mediump float;
+        uniform vec4 uColor;
         void main() {
-            gl_FragColor = vec4(1.0, 0.0, 0.0, 1.0);
+            gl_FragColor = uColor;
         }
     `;
 
-    // Initialize a shader program
-    const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+    shaderProgram = initShaderProgram(vsSource, fsSource);
 
-    // Get the attribute location
-    const vertexPosition = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
-
-    // Create a buffer for the rectangle's positions.
-    const positionBuffer = gl.createBuffer();
-
-    // Select the positionBuffer as the one to apply buffer operations to from here out
-    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-
-    // Create an array of positions for the rectangle.
-    const positions = [
-        -0.7,  0.5,
-         0.7,  0.5,
-        -0.7, -0.5,
-         0.7, -0.5,
-    ];
-
-    // Pass the list of positions into WebGL to build the shape
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
-
-    // Tell WebGL how to pull out the positions from the position buffer into the vertexPosition attribute
-    gl.vertexAttribPointer(vertexPosition, 2, gl.FLOAT, false, 0, 0);
-    gl.enableVertexAttribArray(vertexPosition);
-
-    // Use our shader program
     gl.useProgram(shaderProgram);
 
-    // Draw the rectangle
+    // Get the uniform location for color
+    shaderProgram.uColor = gl.getUniformLocation(shaderProgram, 'uColor');
+}
+
+function initBuffers() {
+    const positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+    const positions = [
+        -0.7,  0.5,
+        0.7,  0.5,
+        -0.7, -0.5,
+        0.7, -0.5,
+    ];
+
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+    const vertexPosition = gl.getAttribLocation(shaderProgram, 'aVertexPosition');
+    gl.vertexAttribPointer(vertexPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(vertexPosition);
+}
+
+function drawScene() {
+    gl.clearColor(0.0, 0.0, 0.0, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+
+    gl.uniform4fv(shaderProgram.uColor, currentColor);
+
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
-// Initialize a shader program, so WebGL knows how to draw our data
-function initShaderProgram(gl, vsSource, fsSource) {
-    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
-    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+function setColor(r, g, b) {
+    currentColor = [r, g, b, 1.0];
+    drawScene();
+}
 
-    // Create the shader program
-    const shaderProgram = gl.createProgram();
-    gl.attachShader(shaderProgram, vertexShader);
-    gl.attachShader(shaderProgram, fragmentShader);
-    gl.linkProgram(shaderProgram);
+function resetColor() {
+    currentColor = [1.0, 1.0, 1.0, 1.0];  // Default to white
+    drawScene();
+}
 
-    // If creating the shader program failed, alert
-    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
-        alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+function initShaderProgram(vsSource, fsSource) {
+    const vertexShader = loadShader(gl.VERTEX_SHADER, vsSource);
+    const fragmentShader = loadShader(gl.FRAGMENT_SHADER, fsSource);
+
+    const program = gl.createProgram();
+    gl.attachShader(program, vertexShader);
+    gl.attachShader(program, fragmentShader);
+    gl.linkProgram(program);
+
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+        alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(program));
         return null;
     }
 
-    return shaderProgram;
+    return program;
 }
 
-// Creates a shader of the given type, uploads the source and compiles it.
-function loadShader(gl, type, source) {
+function loadShader(type, source) {
     const shader = gl.createShader(type);
-
-    // Send the source to the shader object
     gl.shaderSource(shader, source);
-
-    // Compile the shader program
     gl.compileShader(shader);
 
-    // See if it compiled successfully
     if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
         alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
         gl.deleteShader(shader);
